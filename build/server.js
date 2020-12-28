@@ -323,7 +323,11 @@ var Server = exports.Server = function (_EventEmitter) {
                     }
                     // Only HTTP is supported, other protocols such as HTTP or FTP must use the CONNECT method
                     if (parsed.protocol !== 'http:') {
-                        throw new RequestError('Only HTTP protocol is supported (was ' + parsed.protocol + ')', 400);
+                        // throw new RequestError(
+                        //     `Only HTTP protocol is supported (was ${parsed.protocol})`,
+                        //     400
+                        // )
+                        console.log('-- invalid protocol: ' + parsed.protocol);
                     }
 
                     handlerOpts.trgParsed = parsed;
