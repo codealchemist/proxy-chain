@@ -1,14 +1,18 @@
-import http from 'http';
-import util from 'util';
-import EventEmitter from 'events';
-import _ from 'underscore';
+import http from 'http'
+import util from 'util'
+import EventEmitter from 'events'
+import _ from 'underscore'
 import {
-    parseHostHeader, parseProxyAuthorizationHeader, parseUrl, redactParsedUrl, nodeify,
-} from './tools';
-import HandlerForward from './handler_forward';
-import HandlerTunnelDirect from './handler_tunnel_direct';
-import HandlerTunnelChain from './handler_tunnel_chain';
-import HandlerCustomResponse from './handler_custom_response';
+    parseHostHeader,
+    parseProxyAuthorizationHeader,
+    parseUrl,
+    redactParsedUrl,
+    nodeify
+} from './tools'
+import HandlerForward from './handler_forward'
+import HandlerTunnelDirect from './handler_tunnel_direct'
+import HandlerTunnelChain from './handler_tunnel_chain'
+import HandlerCustomResponse from './handler_custom_response'
 
 // TODO:
 // - Fail gracefully if target proxy fails (invalid credentials or non-existent)
@@ -26,11 +30,11 @@ import HandlerCustomResponse from './handler_custom_response';
 // https://github.com/request/tunnel-agent/blob/master/index.js
 // https://github.com/request/request/blob/master/lib/tunnel.js
 
-const DEFAULT_AUTH_REALM = 'ProxyChain';
-const DEFAULT_PROXY_SERVER_PORT = 8000;
-const DEFAULT_TARGET_PORT = 80;
+const DEFAULT_AUTH_REALM = 'ProxyChain'
+const DEFAULT_PROXY_SERVER_PORT = 8000
+const DEFAULT_TARGET_PORT = 80
 
-const REQUEST_ERROR_NAME = 'RequestError';
+const REQUEST_ERROR_NAME = 'RequestError'
 
 /**
  * Represents custom request error. The message is emitted as HTTP response
@@ -41,13 +45,13 @@ const REQUEST_ERROR_NAME = 'RequestError';
  * and for the 407 status the Proxy-Authenticate header will be added.
  */
 export class RequestError extends Error {
-    constructor(message, statusCode, headers) {
-        super(message);
-        this.name = REQUEST_ERROR_NAME;
-        this.statusCode = statusCode;
-        this.headers = headers;
+    constructor (message, statusCode, headers) {
+        super(message)
+        this.name = REQUEST_ERROR_NAME
+        this.statusCode = statusCode
+        this.headers = headers
 
-        Error.captureStackTrace(this, RequestError);
+        Error.captureStackTrace(this, RequestError)
     }
 }
 
@@ -87,71 +91,71 @@ export class Server extends EventEmitter {
      * @param [options.authRealm] Realm used in the Proxy-Authenticate header and also in the 'Server' HTTP header. By default it's `ProxyChain`.
      * @param [options.verbose] If true, the server logs
      */
-    constructor(options) {
-        super();
+    constructor (options) {
+        super()
 
-        options = options || {};
+        options = options || {}
 
         if (options.port === undefined || options.port === null) {
-            this.port = DEFAULT_PROXY_SERVER_PORT;
+            this.port = DEFAULT_PROXY_SERVER_PORT
         } else {
-            this.port = options.port;
+            this.port = options.port
         }
-        this.prepareRequestFunction = options.prepareRequestFunction;
-        this.authRealm = options.authRealm || DEFAULT_AUTH_REALM;
-        this.verbose = !!options.verbose;
+        this.prepareRequestFunction = options.prepareRequestFunction
+        this.authRealm = options.authRealm || DEFAULT_AUTH_REALM
+        this.verbose = !!options.verbose
 
         // Key is handler ID, value is HandlerXxx instance
-        this.handlers = {};
-        this.lastHandlerId = 0;
+        this.handlers = {}
+        this.lastHandlerId = 0
 
-        this.server = http.createServer();
-        this.server.on('clientError', this.onClientError.bind(this));
-        this.server.on('request', this.onRequest.bind(this));
-        this.server.on('connect', this.onConnect.bind(this));
+        this.server = http.createServer()
+        this.server.on('clientError', this.onClientError.bind(this))
+        this.server.on('request', this.onRequest.bind(this))
+        this.server.on('connect', this.onConnect.bind(this))
 
         this.stats = {
             httpRequestCount: 0,
-            connectRequestCount: 0,
-        };
-    }
-
-    log(handlerId, str) {
-        if (this.verbose) {
-            const logPrefix = handlerId ? `${handlerId} | ` : '';
-            console.log(`ProxyServer[${this.port}]: ${logPrefix}${str}`);
+            connectRequestCount: 0
         }
     }
 
-    onClientError(err, socket) {
-        this.log(null, `onClientError: ${err}`);
-        this.sendResponse(socket, 400, null, 'Invalid request');
+    log (handlerId, str) {
+        if (this.verbose) {
+            const logPrefix = handlerId ? `${handlerId} | ` : ''
+            console.log(`ProxyServer[${this.port}]: ${logPrefix}${str}`)
+        }
+    }
+
+    onClientError (err, socket) {
+        this.log(null, `onClientError: ${err}`)
+        this.sendResponse(socket, 400, null, 'Invalid request')
     }
 
     /**
      * Handles normal HTTP request by forwarding it to target host or the upstream proxy.
      */
-    onRequest(request, response) {
-        let handlerOpts;
+    onRequest (request, response) {
+        let handlerOpts
         this.prepareRequestHandling(request)
-            .then((result) => {
-                handlerOpts = result;
-                handlerOpts.srcResponse = response;
+            .then(result => {
+                handlerOpts = result
+                handlerOpts.srcResponse = response
 
-                let handler;
+                let handler
                 if (handlerOpts.customResponseFunction) {
-                    this.log(handlerOpts.id, 'Using HandlerCustomResponse');
-                    handler = new HandlerCustomResponse(handlerOpts);
+                    this.log(handlerOpts.id, 'Using HandlerCustomResponse')
+                    handler = new HandlerCustomResponse(handlerOpts)
                 } else {
-                    this.log(handlerOpts.id, 'Using HandlerForward');
-                    handler = new HandlerForward(handlerOpts);
+                    this.log(handlerOpts.id, 'Using HandlerForward')
+                    handler = new HandlerForward(handlerOpts)
                 }
 
-                this.handlerRun(handler);
+                this.handlerRun(handler)
             })
-            .catch((err) => {
-                this.failRequest(request, err, handlerOpts);
-            });
+            .catch(err => {
+                this.failRequest(request, err, handlerOpts)
+            })
     }
 
     /**
@@ -160,27 +164,27 @@ export class Server extends EventEmitter {
      * @param socket
      * @param head The first packet of the tunneling stream (may be empty)
      */
-    onConnect(request, socket, head) {
-        let handlerOpts;
+    onConnect (request, socket, head) {
+        let handlerOpts
         this.prepareRequestHandling(request)
-            .then((result) => {
-                handlerOpts = result;
-                handlerOpts.srcHead = head;
+            .then(result => {
+                handlerOpts = result
+                handlerOpts.srcHead = head
 
-                let handler;
+                let handler
                 if (handlerOpts.upstreamProxyUrlParsed) {
-                    this.log(handlerOpts.id, 'Using HandlerTunnelChain');
-                    handler = new HandlerTunnelChain(handlerOpts);
+                    this.log(handlerOpts.id, 'Using HandlerTunnelChain')
+                    handler = new HandlerTunnelChain(handlerOpts)
                 } else {
-                    this.log(handlerOpts.id, 'Using HandlerTunnelDirect');
-                    handler = new HandlerTunnelDirect(handlerOpts);
+                    this.log(handlerOpts.id, 'Using HandlerTunnelDirect')
+                    handler = new HandlerTunnelDirect(handlerOpts)
                 }
 
-                this.handlerRun(handler);
+                this.handlerRun(handler)
             })
-            .catch((err) => {
-                this.failRequest(request, err, handlerOpts);
-            });
+            .catch(err => {
+                this.failRequest(request, err, handlerOpts)
+            })
     }
 
     /**
@@ -188,7 +192,7 @@ export class Server extends EventEmitter {
      * Returns a promise resolving to an object that can be passed to construcot of one of the HandlerXxx classes.
      * @param request
      */
-    prepareRequestHandling(request) {
+    prepareRequestHandling (request) {
         // console.log('XXX prepareRequestHandling');
         // console.dir(_.pick(request, 'url', 'method'));
         // console.dir(url.parse(request.url));
@@ -199,21 +203,27 @@ export class Server extends EventEmitter {
             srcRequest: request,
             srcHead: null,
             trgParsed: null,
-            upstreamProxyUrlParsed: null,
-        };
+            upstreamProxyUrlParsed: null
+        }
 
-        this.log(handlerOpts.id, `!!! Handling ${request.method} ${request.url} HTTP/${request.httpVersion}`);
+        this.log(
+            handlerOpts.id,
+            `!!! Handling ${request.method} ${request.url} HTTP/${request.httpVersion}`
+        )
 
-        const { socket } = request;
-        let isHttp = false;
+        const { socket } = request
+        let isHttp = false
 
         // We need to consume socket errors, otherwise they could crash the entire process.
         // See https://github.com/apifytech/proxy-chain/issues/53
         // TODO: HandlerBase will also attach its own 'error' handler, we should only attach this one
         //  if HandlerBase doesn't do it, to avoid duplicate logs
-        socket.on('error', (err) => {
-            this.log(handlerOpts.id, `Source socket emitted error: ${err.stack || err}`);
-        });
+        socket.on('error', err => {
+            this.log(
+                handlerOpts.id,
+                `Source socket emitted error: ${err.stack || err}`
+            )
+        })
 
         return Promise.resolve()
             .then(() => {
@@ -223,15 +233,18 @@ export class Server extends EventEmitter {
                     // The request should look like:
                     //   CONNECT server.example.com:80 HTTP/1.1
                     // Note that request.url contains the "server.example.com:80" part
-                    handlerOpts.trgParsed = parseHostHeader(request.url);
+                    handlerOpts.trgParsed = parseHostHeader(request.url)
 
                     // If srcRequest.url does not match the regexp tools.HOST_HEADER_REGEX
                     // or the url is too long it will not be parsed so we throw error here.
                     if (!handlerOpts.trgParsed) {
-                        throw new RequestError(`Target "${request.url}" could not be parsed`, 400);
+                        throw new RequestError(
+                            `Target "${request.url}" could not be parsed`,
+                            400
+                        )
                     }
 
-                    this.stats.connectRequestCount++;
+                    this.stats.connectRequestCount++
                 } else {
                     // The request should look like:
                     //   GET http://server.example.com:80/some-path HTTP/1.1
@@ -239,36 +252,48 @@ export class Server extends EventEmitter {
                     // "When making a request to a proxy, other than a CONNECT or server-wide
                     //  OPTIONS request (as detailed below), a client MUST send the target
                     //  URI in absolute-form as the request-target"
-                    const parsed = parseUrl(request.url);
+                    const parsed = parseUrl(request.url)
 
                     // If srcRequest.url does not match the regexp tools.HOST_HEADER_REGEX
                     // or the url is too long it will not be parsed so we throw error here.
                     if (!parsed) {
-                        throw new RequestError(`Target "${request.url}" could not be parsed`, 400);
+                        throw new RequestError(
+                            `Target "${request.url}" could not be parsed`,
+                            400
+                        )
                     }
 
                     // If srcRequest.url is something like '/some-path', this is most likely a normal HTTP request
                     if (!parsed.protocol) {
-                        throw new RequestError('Hey, good try, but I\'m a HTTP proxy, not your ordinary web server :)', 400);
+                        // throw new RequestError('Hey, good try, but I\'m a HTTP proxy, not your ordinary web server :)', 400);
+                        this.sendResponse(socket, 200, null, 'Hello client')
                     }
                     // Only HTTP is supported, other protocols such as HTTP or FTP must use the CONNECT method
                     if (parsed.protocol !== 'http:') {
-                        throw new RequestError(`Only HTTP protocol is supported (was ${parsed.protocol})`, 400);
+                        throw new RequestError(
+                            `Only HTTP protocol is supported (was ${parsed.protocol})`,
+                            400
+                        )
                     }
 
-                    handlerOpts.trgParsed = parsed;
-                    isHttp = true;
+                    handlerOpts.trgParsed = parsed
+                    isHttp = true
 
-                    this.stats.httpRequestCount++;
+                    this.stats.httpRequestCount++
                 }
 
-                handlerOpts.trgParsed.port = handlerOpts.trgParsed.port || DEFAULT_TARGET_PORT;
+                handlerOpts.trgParsed.port =
+                    handlerOpts.trgParsed.port || DEFAULT_TARGET_PORT
 
                 // Authenticate the request using a user function (if provided)
-                if (!this.prepareRequestFunction) return { requestAuthentication: false, upstreamProxyUrlParsed: null };
+                if (!this.prepareRequestFunction)
+                    return {
+                        requestAuthentication: false,
+                        upstreamProxyUrlParsed: null
+                    }
 
                 // Pause the socket so that no data is lost
-                socket.pause();
+                socket.pause()
 
                 const funcOpts = {
                     connectionId: handlerOpts.id,
@@ -277,83 +302,111 @@ export class Server extends EventEmitter {
                     password: null,
                     hostname: handlerOpts.trgParsed.hostname,
                     port: handlerOpts.trgParsed.port,
-                    isHttp,
-                };
+                    isHttp
+                }
 
-                const proxyAuth = request.headers['proxy-authorization'];
+                const proxyAuth = request.headers['proxy-authorization']
                 if (proxyAuth) {
-                    const auth = parseProxyAuthorizationHeader(proxyAuth);
+                    const auth = parseProxyAuthorizationHeader(proxyAuth)
                     if (!auth) {
-                        throw new RequestError('Invalid "Proxy-Authorization" header', 400);
+                        throw new RequestError(
+                            'Invalid "Proxy-Authorization" header',
+                            400
+                        )
                     }
                     if (auth.type !== 'Basic') {
-                        throw new RequestError('The "Proxy-Authorization" header must have the "Basic" type.', 400);
+                        throw new RequestError(
+                            'The "Proxy-Authorization" header must have the "Basic" type.',
+                            400
+                        )
                     }
-                    funcOpts.username = auth.username;
-                    funcOpts.password = auth.password;
+                    funcOpts.username = auth.username
+                    funcOpts.password = auth.password
                 }
 
                 // User function returns a result directly or a promise
-                return this.prepareRequestFunction(funcOpts);
+                return this.prepareRequestFunction(funcOpts)
             })
-            .then((funcResult) => {
+            .then(funcResult => {
                 // If not authenticated, request client to authenticate
                 if (funcResult && funcResult.requestAuthentication) {
-                    throw new RequestError(funcResult.failMsg || 'Proxy credentials required.', 407);
+                    throw new RequestError(
+                        funcResult.failMsg || 'Proxy credentials required.',
+                        407
+                    )
                 }
 
                 if (funcResult && funcResult.upstreamProxyUrl) {
-                    handlerOpts.upstreamProxyUrlParsed = parseUrl(funcResult.upstreamProxyUrl);
+                    handlerOpts.upstreamProxyUrlParsed = parseUrl(
+                        funcResult.upstreamProxyUrl
+                    )
 
                     if (handlerOpts.upstreamProxyUrlParsed) {
-                        if (!handlerOpts.upstreamProxyUrlParsed.hostname || !handlerOpts.upstreamProxyUrlParsed.port) {
+                        if (
+                            !handlerOpts.upstreamProxyUrlParsed.hostname ||
+                            !handlerOpts.upstreamProxyUrlParsed.port
+                        ) {
                             throw new Error(
-                                `Invalid "upstreamProxyUrl" provided: URL must have hostname and port (was "${funcResult.upstreamProxyUrl}")`,
-                            );
+                                `Invalid "upstreamProxyUrl" provided: URL must have hostname and port (was "${funcResult.upstreamProxyUrl}")`
+                            )
                         }
-                        if (handlerOpts.upstreamProxyUrlParsed.scheme !== 'http') {
+                        if (
+                            handlerOpts.upstreamProxyUrlParsed.scheme !== 'http'
+                        ) {
                             throw new Error(
-                                `Invalid "upstreamProxyUrl" provided: URL must have the "http" scheme (was "${funcResult.upstreamProxyUrl}")`,
-                            );
+                                `Invalid "upstreamProxyUrl" provided: URL must have the "http" scheme (was "${funcResult.upstreamProxyUrl}")`
+                            )
                         }
                     }
                 }
 
                 if (funcResult && funcResult.customResponseFunction) {
-                    this.log(handlerOpts.id, 'Using custom response function');
-                    handlerOpts.customResponseFunction = funcResult.customResponseFunction;
+                    this.log(handlerOpts.id, 'Using custom response function')
+                    handlerOpts.customResponseFunction =
+                        funcResult.customResponseFunction
                     if (!isHttp) {
-                        throw new Error('The "customResponseFunction" option can only be used for HTTP requests.');
+                        throw new Error(
+                            'The "customResponseFunction" option can only be used for HTTP requests.'
+                        )
                     }
-                    if (typeof (handlerOpts.customResponseFunction) !== 'function') {
-                        throw new Error('The "customResponseFunction" option must be a function.');
+                    if (
+                        typeof handlerOpts.customResponseFunction !== 'function'
+                    ) {
+                        throw new Error(
+                            'The "customResponseFunction" option must be a function.'
+                        )
                     }
                 }
 
                 if (handlerOpts.upstreamProxyUrlParsed) {
-                    this.log(handlerOpts.id, `Using upstream proxy ${redactParsedUrl(handlerOpts.upstreamProxyUrlParsed)}`);
+                    this.log(
+                        handlerOpts.id,
+                        `Using upstream proxy ${redactParsedUrl(
+                            handlerOpts.upstreamProxyUrlParsed
+                        )}`
+                    )
                 }
 
-                return handlerOpts;
+                return handlerOpts
             })
             .finally(() => {
-                if (this.prepareRequestFunction) socket.resume();
-            });
+                if (this.prepareRequestFunction) socket.resume()
+            })
     }
 
-    handlerRun(handler) {
-        this.handlers[handler.id] = handler;
+    handlerRun (handler) {
+        this.handlers[handler.id] = handler
 
         handler.once('close', ({ stats }) => {
             this.emit('connectionClosed', {
                 connectionId: handler.id,
-                stats,
-            });
-            delete this.handlers[handler.id];
-            this.log(handler.id, '!!! Closed and removed from server');
-        });
+                stats
+            })
+            delete this.handlers[handler.id]
+            this.log(handler.id, '!!! Closed and removed from server')
+        })
 
-        handler.run();
+        handler.run()
     }
 
     /**
@@ -361,25 +414,41 @@ export class Server extends EventEmitter {
      * @param request
      * @param err
      */
-    failRequest(request, err, handlerOpts) {
-        const handlerId = handlerOpts ? handlerOpts.id : null;
+    failRequest (request, err, handlerOpts) {
+        const handlerId = handlerOpts ? handlerOpts.id : null
 
         if (err.name === REQUEST_ERROR_NAME) {
-            this.log(handlerId, `Request failed (status ${err.statusCode}): ${err.message}`);
-            this.sendResponse(request.socket, err.statusCode, err.headers, err.message);
+            this.log(
+                handlerId,
+                `Request failed (status ${err.statusCode}): ${err.message}`
+            )
+            this.sendResponse(
+                request.socket,
+                err.statusCode,
+                err.headers,
+                err.message
+            )
         } else {
-            this.log(handlerId, `Request failed with unknown error: ${err.stack || err}`);
-            this.sendResponse(request.socket, 500, null, 'Internal error in proxy server');
-            this.emit('requestFailed', { error: err, request });
+            this.log(
+                handlerId,
+                `Request failed with unknown error: ${err.stack || err}`
+            )
+            this.sendResponse(
+                request.socket,
+                500,
+                null,
+                'Internal error in proxy server'
+            )
+            this.emit('requestFailed', { error: err, request })
         }
 
         // Emit 'connectionClosed' event if request failed and connection was already reported
         if (handlerOpts) {
-            this.log(handlerId, 'Closed because request failed with error');
+            this.log(handlerId, 'Closed because request failed with error')
             this.emit('connectionClosed', {
                 connectionId: handlerOpts.id,
-                stats: { srcTxBytes: 0, srcRxBytes: 0 },
-            });
+                stats: { srcTxBytes: 0, srcRxBytes: 0 }
+            })
         }
     }
 
@@ -390,48 +459,58 @@ export class Server extends EventEmitter {
      * @param headers
      * @param message
      */
-    sendResponse(socket, statusCode, headers, message) {
+    sendResponse (socket, statusCode, headers, message) {
         try {
-            headers = headers || {};
+            headers = headers || {}
 
             // TODO: We should use fully case-insensitive lookup here!
             if (!headers['Content-Type'] && !headers['content-type']) {
-                headers['Content-Type'] = 'text/plain; charset=utf-8';
+                headers['Content-Type'] = 'text/plain; charset=utf-8'
             }
-            if (statusCode === 407 && !headers['Proxy-Authenticate'] && !headers['proxy-authenticate']) {
-                headers['Proxy-Authenticate'] = `Basic realm="${this.authRealm}"`;
+            if (
+                statusCode === 407 &&
+                !headers['Proxy-Authenticate'] &&
+                !headers['proxy-authenticate']
+            ) {
+                headers[
+                    'Proxy-Authenticate'
+                ] = `Basic realm="${this.authRealm}"`
             }
             if (!headers.Server) {
-                headers.Server = this.authRealm;
+                headers.Server = this.authRealm
             }
             // These headers are required by e.g. PhantomJS, otherwise the connection would time out!
             if (!headers.Connection) {
-                headers.Connection = 'close';
+                headers.Connection = 'close'
             }
             if (!headers['Content-Length'] && !headers['content-length']) {
-                headers['Content-Length'] = Buffer.byteLength(message);
+                headers['Content-Length'] = Buffer.byteLength(message)
             }
 
-            let msg = `HTTP/1.1 ${statusCode} ${http.STATUS_CODES[statusCode]}\r\n`;
+            let msg = `HTTP/1.1 ${statusCode} ${http.STATUS_CODES[statusCode]}\r\n`
             _.each(headers, (value, key) => {
-                msg += `${key}: ${value}\r\n`;
-            });
-            msg += `\r\n${message}`;
+                msg += `${key}: ${value}\r\n`
+            })
+            msg += `\r\n${message}`
 
             // console.log("RESPONSE:\n" + msg);
 
             socket.write(msg, () => {
-                socket.end();
+                socket.end()
 
                 // Unfortunately calling end() will not close the socket if client refuses to close it.
                 // Hence calling destroy after a short while. One second should be more than enough
                 // to send out this small amount data.
                 setTimeout(() => {
-                    socket.destroy();
-                }, 1000);
-            });
+                    socket.destroy()
+                }, 1000)
+            })
         } catch (err) {
-            this.log(null, `Unhandled error in sendResponse(), will be ignored: ${err.stack || err}`);
+            this.log(
+                null,
+                `Unhandled error in sendResponse(), will be ignored: ${err.stack ||
+                    err}`
+            )
         }
     }
 
@@ -440,40 +519,40 @@ export class Server extends EventEmitter {
      * @param callback Optional callback
      * @return {(Promise|undefined)}
      */
-    listen(callback) {
+    listen (callback) {
         const promise = new Promise((resolve, reject) => {
             // Unfortunately server.listen() is not a normal function that fails on error,
             // so we need this trickery
-            const onError = (err) => {
-                this.log(null, `Listen failed: ${err}`);
-                removeListeners();
-                reject(err);
-            };
+            const onError = err => {
+                this.log(null, `Listen failed: ${err}`)
+                removeListeners()
+                reject(err)
+            }
             const onListening = () => {
-                this.port = this.server.address().port;
-                this.log(null, 'Listening...');
-                removeListeners();
-                resolve();
-            };
+                this.port = this.server.address().port
+                this.log(null, 'Listening...')
+                removeListeners()
+                resolve()
+            }
             const removeListeners = () => {
-                this.server.removeListener('error', onError);
-                this.server.removeListener('listening', onListening);
-            };
+                this.server.removeListener('error', onError)
+                this.server.removeListener('listening', onListening)
+            }
 
-            this.server.on('error', onError);
-            this.server.on('listening', onListening);
-            this.server.listen(this.port);
-        });
+            this.server.on('error', onError)
+            this.server.on('listening', onListening)
+            this.server.listen(this.port)
+        })
 
-        return nodeify(promise, callback);
+        return nodeify(promise, callback)
     }
 
     /**
      * Gets array of IDs of all active connections.
      * @returns {*}
      */
-    getConnectionIds() {
-        return _.keys(this.handlers);
+    getConnectionIds () {
+        return _.keys(this.handlers)
     }
 
     /**
@@ -483,11 +562,11 @@ export class Server extends EventEmitter {
      * @return {Object} An object with statistics { srcTxBytes, srcRxBytes, trgTxBytes, trgRxBytes },
      * or null if connection does not exist or has been closed.
      */
-    getConnectionStats(connectionId) {
-        const handler = this.handlers && this.handlers[connectionId];
-        if (!handler) return undefined;
+    getConnectionStats (connectionId) {
+        const handler = this.handlers && this.handlers[connectionId]
+        if (!handler) return undefined
 
-        return handler.getStats();
+        return handler.getStats()
     }
 
     /**
@@ -496,27 +575,27 @@ export class Server extends EventEmitter {
      * to targets and upstream proxies will be forcibly aborted.
      * @param callback
      */
-    close(closeConnections, callback) {
-        if (typeof (closeConnections) === 'function') {
-            callback = closeConnections;
-            closeConnections = false;
+    close (closeConnections, callback) {
+        if (typeof closeConnections === 'function') {
+            callback = closeConnections
+            closeConnections = false
         }
 
         if (closeConnections) {
-            this.log(null, 'Closing pending handlers');
-            let count = 0;
-            _.each(this.handlers, (handler) => {
-                count++;
-                handler.close();
-            });
-            this.log(null, `Destroyed ${count} pending handlers`);
+            this.log(null, 'Closing pending handlers')
+            let count = 0
+            _.each(this.handlers, handler => {
+                count++
+                handler.close()
+            })
+            this.log(null, `Destroyed ${count} pending handlers`)
         }
 
         if (this.server) {
-            const { server } = this;
-            this.server = null;
-            const promise = util.promisify(server.close).bind(server)();
-            return nodeify(promise, callback);
+            const { server } = this
+            this.server = null
+            const promise = util.promisify(server.close).bind(server)()
+            return nodeify(promise, callback)
         }
     }
 }
